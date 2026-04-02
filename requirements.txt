@@ -1,4 +1,8 @@
-streamlit
-Pillow>=9.0.0
-opencv-python-headless
-numpy
+streamlit==1.28.0
+Pillow==10.1.0
+opencv-python==4.8.1.78
+numpy==1.24.3
+torch==2.1.0
+torchvision==0.16.0
+streamlit-drawable-canvas==0.9.1
+requests==2.31.0
