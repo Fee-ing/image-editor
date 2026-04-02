@@ -127,17 +127,3 @@ if uploaded_file and apply_btn:
     # 这里为了简化，我们直接用两列布局展示，或者使用专门的对比组件
     # 如果你安装了 streamlit-image-comparison，可以用下面这行：
     # streamlit_image_comparison(original_image, result_image)
-
-# 使用原生的双列布局
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("🖼️ 原图")
-    st.image(original_image, use_column_width=True)
-    
-with col2:
-    st.subheader("✨ 处理后")
-    if 'result_image' in locals(): # 假设你已经处理好了图片
-        st.image(result_image, use_column_width=True)
-    else:
-        st.info("处理后的图片将显示在这里")
