@@ -5,7 +5,7 @@ import os
 
 # 导入我们的编辑逻辑
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
-from src.editor import ImageEditor
+from editor import ImageEditor
 
 # --- 页面配置 ---
 st.set_page_config(
