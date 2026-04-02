@@ -6,20 +6,19 @@ import io
 import sys
 import os
 
-try:
-    from streamlit_drawable_canvas import st_canvas
-    CANVAS_AVAILABLE = True
-except ImportError:
-    CANVAS_AVAILABLE = False
-    st_canvas = None
-
 # 兼容本地和 Streamlit Cloud 部署
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 from editor import ImageEditor
-from streamlit_drawable_canvas import st_canvas
+
+# 尝试导入 canvas，失败则使用简化模式
+try:
+    from streamlit_drawable_canvas import st_canvas
+    CANVAS_AVAILABLE = True
+except ImportError:
+    CANVAS_AVAILABLE = False
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -49,6 +48,13 @@ st.markdown("""
         border-radius: 5px;
         margin-bottom: 1rem;
     }
+    .warning-box {
+        background-color: #fff3cd;
+        padding: 1rem;
+        border-radius: 5px;
+        margin-bottom: 1rem;
+        border-left: 4px solid #ffc107;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -63,44 +69,64 @@ with st.sidebar:
     # 功能选择
     mode = st.radio("选择功能", ["智能去水印", "清晰化", "压缩", "裁剪"])
     
-    # 智能去水印专属：选区绘制
-    canvas_result = None
-    stroke_width = 10
-    stroke_color = "#ff0000"
+    # 智能去水印专属：选区输入（无 canvas 时使用坐标输入）
+    watermark_box = None
     
     if mode == "智能去水印" and uploaded_file:
-        st.markdown("### 🖌️ 绘制水印区域")
-        st.info("💡 用鼠标框选需要去除的水印或字幕区域")
-        
-        # 加载图片获取尺寸
-        temp_img = Image.open(uploaded_file)
-        img_width, img_height = temp_img.size
-        
-        # 限制画布最大尺寸
-        max_size = 600
-        if img_width > max_size or img_height > max_size:
-            scale = max_size / max(img_width, img_height)
-            canvas_width = int(img_width * scale)
-            canvas_height = int(img_height * scale)
+        if CANVAS_AVAILABLE:
+            st.markdown("### 🖌️ 绘制水印区域")
+            st.info("💡 用鼠标框选需要去除的水印或字幕区域")
+            
+            temp_img = Image.open(uploaded_file)
+            img_width, img_height = temp_img.size
+            
+            max_size = 600
+            if img_width > max_size or img_height > max_size:
+                scale = max_size / max(img_width, img_height)
+                canvas_width = int(img_width * scale)
+                canvas_height = int(img_height * scale)
+            else:
+                canvas_width = img_width
+                canvas_height = img_height
+            
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)",
+                stroke_width=10,
+                stroke_color="#ff0000",
+                background_image=temp_img,
+                update_streamlit=True,
+                height=canvas_height,
+                width=canvas_width,
+                drawing_mode="rect",
+                key="canvas",
+                display_toolbar=True
+            )
         else:
-            canvas_width = img_width
-            canvas_height = img_height
-        
-        canvas_result = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",
-            stroke_width=stroke_width,
-            stroke_color=stroke_color,
-            background_image=temp_img,
-            update_streamlit=True,
-            height=canvas_height,
-            width=canvas_width,
-            drawing_mode="rect",
-            key="canvas",
-            display_toolbar=True
-        )
-        
-        st.markdown("### 📐 选区设置")
-        stroke_width = st.slider("画笔粗细", 5, 30, 10)
+            st.markdown("### 📐 输入水印区域坐标")
+            st.warning("⚠️ 画布组件不可用，请手动输入坐标")
+            
+            temp_img = Image.open(uploaded_file)
+            img_width, img_height = temp_img.size
+            
+            st.markdown(f"📊 图片尺寸：{img_width} × {img_height}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                left = st.number_input("左边界", min_value=0, max_value=img_width, value=0)
+                top = st.number_input("上边界", min_value=0, max_value=img_height, value=0)
+            with col2:
+                right = st.number_input("右边界", min_value=0, max_value=img_width, value=img_width//4)
+                bottom = st.number_input("下边界", min_value=0, max_value=img_height, value=img_height//4)
+            
+            watermark_box = (left, top, right, bottom)
+            
+            st.markdown("""
+            <div class="warning-box">
+            💡 <strong>提示：</strong> 水印通常在图片边缘，可尝试以下预设：
+            <br>• 右下角水印：左=70%, 上=80%, 右=100%, 下=100%
+            <br>• 底部字幕：左=0%, 上=90%, 右=100%, 下=100%
+            </div>
+            """, unsafe_allow_html=True)
     
     # 其他功能的参数设置
     elif mode == "清晰化":
@@ -121,7 +147,7 @@ with st.sidebar:
     # 使用提示
     st.markdown("### 💡 使用提示")
     st.markdown("""
-    - **智能去水印**: 框选水印区域后点击处理
+    - **智能去水印**: 框选或输入坐标后点击处理
     - **清晰化**: 调整锐化强度增强细节
     - **压缩**: 降低质量减小文件大小
     - **裁剪**: 移除图片边缘区域
@@ -160,13 +186,12 @@ if uploaded_file is not None:
                 
                 try:
                     if mode == "智能去水印":
-                        if canvas_result and canvas_result.objects:
-                            # 计算画布与实际图片的比例
+                        if CANVAS_AVAILABLE and 'canvas_result' in locals() and canvas_result and canvas_result.objects:
+                            # 使用 canvas 选区
                             if canvas_result.height and canvas_result.width:
                                 scale_y = original_image.height / canvas_result.height
                                 scale_x = original_image.width / canvas_result.width
                                 
-                                # 提取所有矩形选区
                                 boxes = []
                                 for obj in canvas_result.objects:
                                     if obj["type"] == "rect":
@@ -177,9 +202,7 @@ if uploaded_file is not None:
                                         box = (left, top, left + width, top + height)
                                         boxes.append(box)
                                 
-                                # 处理选区
                                 if boxes:
-                                    # 合并所有选区为一个 bounding box
                                     all_left = min(b[0] for b in boxes)
                                     all_top = min(b[1] for b in boxes)
                                     all_right = max(b[2] for b in boxes)
@@ -189,14 +212,18 @@ if uploaded_file is not None:
                                     result_image = editor.remove_watermark(original_image, merged_box)
                                     st.success(f"✅ 水印已去除 (处理区域：{len(boxes)} 个选区)")
                                 else:
-                                    st.warning("⚠️ 未检测到有效选区，使用自动检测模式")
                                     result_image = editor.remove_watermark(original_image)
+                                    st.warning("⚠️ 未检测到选区，使用自动检测模式")
                             else:
-                                st.warning("⚠️ 画布尺寸异常，使用自动检测模式")
                                 result_image = editor.remove_watermark(original_image)
+                        elif watermark_box:
+                            # 使用手动输入的坐标
+                            result_image = editor.remove_watermark(original_image, watermark_box)
+                            st.success("✅ 水印已去除 (使用手动坐标)")
                         else:
-                            st.warning("⚠️ 未绘制选区，使用自动检测模式")
+                            # 自动检测
                             result_image = editor.remove_watermark(original_image)
+                            st.warning("⚠️ 使用自动检测模式")
                         
                     elif mode == "清晰化":
                         result_image = editor.sharpen(original_image, sharpness)
@@ -204,7 +231,6 @@ if uploaded_file is not None:
                         
                     elif mode == "压缩":
                         result_image = editor.compress(original_image, quality)
-                        # 计算压缩率
                         original_size = uploaded_file.size
                         buf = io.BytesIO()
                         if result_image.mode in ("RGBA", "P"):
@@ -228,7 +254,6 @@ if uploaded_file is not None:
                     if result_image:
                         st.image(result_image, use_column_width=True)
                         
-                        # 提供下载按钮
                         buf = io.BytesIO()
                         if result_image.mode in ("RGBA", "P"):
                             result_image = result_image.convert("RGB")
@@ -259,7 +284,7 @@ st.markdown("""
 
 | 功能 | 描述 | 适用场景 |
 |------|------|----------|
-| 🧹 智能去水印 | AI 自动识别并去除水印/字幕 | 去除图片水印、文字遮挡 |
+| 🧹 智能去水印 | 自动识别并去除水印/字幕 | 去除图片水印、文字遮挡 |
 | 🔍 清晰化 | 增强图片边缘和细节 | 模糊图片变清晰 |
 | 📦 压缩 | 减小图片文件大小 | 节省存储空间、加快加载 |
 | ✂️ 裁剪 | 移除图片边缘区域 | 调整构图、去除多余部分 |
