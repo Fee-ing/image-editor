@@ -2,15 +2,16 @@
 
 import streamlit as st
 from PIL import Image
+import io
 import sys
 import os
-import io
 
-# 导入我们的编辑逻辑
-sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+# 兼容本地和 Streamlit Cloud 部署
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 from editor import ImageEditor
-
-# 导入画布组件
 from streamlit_drawable_canvas import st_canvas
 
 # --- 页面配置 ---
@@ -21,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 自定义 CSS (让界面更时尚简约) ---
+# --- 自定义 CSS ---
 st.markdown("""
 <style>
     .stButton>button {
@@ -169,7 +170,7 @@ if uploaded_file is not None:
                                         box = (left, top, left + width, top + height)
                                         boxes.append(box)
                                 
-                                # 处理第一个选区（或合并多个选区）
+                                # 处理选区
                                 if boxes:
                                     # 合并所有选区为一个 bounding box
                                     all_left = min(b[0] for b in boxes)
@@ -257,5 +258,5 @@ st.markdown("""
 | ✂️ 裁剪 | 移除图片边缘区域 | 调整构图、去除多余部分 |
 
 ---
-**Powered by AI Image Editor** | 基于深度学习图像修复技术
+**Powered by AI Image Editor** | 基于 OpenCV 图像修复技术
 """)
