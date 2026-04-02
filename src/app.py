@@ -13,13 +13,6 @@ if current_dir not in sys.path:
 
 from editor import ImageEditor
 
-# 尝试导入 canvas，失败则使用简化模式
-try:
-    from streamlit_drawable_canvas import st_canvas
-    CANVAS_AVAILABLE = True
-except ImportError:
-    CANVAS_AVAILABLE = False
-
 # --- 页面配置 ---
 st.set_page_config(
     page_title="AI 图片编辑器",
@@ -48,12 +41,12 @@ st.markdown("""
         border-radius: 5px;
         margin-bottom: 1rem;
     }
-    .warning-box {
-        background-color: #fff3cd;
+    .tip-box {
+        background-color: #e7f3ff;
         padding: 1rem;
         border-radius: 5px;
         margin-bottom: 1rem;
-        border-left: 4px solid #ffc107;
+        border-left: 4px solid #2196F3;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -69,46 +62,21 @@ with st.sidebar:
     # 功能选择
     mode = st.radio("选择功能", ["智能去水印", "清晰化", "压缩", "裁剪"])
     
-    # 智能去水印专属：选区输入（无 canvas 时使用坐标输入）
+    # 智能去水印专属：坐标输入
     watermark_box = None
+    use_auto_detect = True
     
     if mode == "智能去水印" and uploaded_file:
-        if CANVAS_AVAILABLE:
-            st.markdown("### 🖌️ 绘制水印区域")
-            st.info("💡 用鼠标框选需要去除的水印或字幕区域")
-            
-            temp_img = Image.open(uploaded_file)
-            img_width, img_height = temp_img.size
-            
-            max_size = 600
-            if img_width > max_size or img_height > max_size:
-                scale = max_size / max(img_width, img_height)
-                canvas_width = int(img_width * scale)
-                canvas_height = int(img_height * scale)
-            else:
-                canvas_width = img_width
-                canvas_height = img_height
-            
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=10,
-                stroke_color="#ff0000",
-                background_image=temp_img,
-                update_streamlit=True,
-                height=canvas_height,
-                width=canvas_width,
-                drawing_mode="rect",
-                key="canvas",
-                display_toolbar=True
-            )
-        else:
-            st.markdown("### 📐 输入水印区域坐标")
-            st.warning("⚠️ 画布组件不可用，请手动输入坐标")
-            
-            temp_img = Image.open(uploaded_file)
-            img_width, img_height = temp_img.size
-            
-            st.markdown(f"📊 图片尺寸：{img_width} × {img_height}")
+        st.markdown("### 📐 水印区域设置")
+        
+        temp_img = Image.open(uploaded_file)
+        img_width, img_height = temp_img.size
+        
+        # 自动检测开关
+        use_auto_detect = st.checkbox("✅ 自动检测水印区域", value=True)
+        
+        if not use_auto_detect:
+            st.markdown(f"📊 图片尺寸：**{img_width} × {img_height}**")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -121,12 +89,29 @@ with st.sidebar:
             watermark_box = (left, top, right, bottom)
             
             st.markdown("""
-            <div class="warning-box">
-            💡 <strong>提示：</strong> 水印通常在图片边缘，可尝试以下预设：
+            <div class="tip-box">
+            💡 <strong>常用预设：</strong>
             <br>• 右下角水印：左=70%, 上=80%, 右=100%, 下=100%
             <br>• 底部字幕：左=0%, 上=90%, 右=100%, 下=100%
+            <br>• 左上角水印：左=0%, 上=0%, 右=30%, 下=20%
             </div>
             """, unsafe_allow_html=True)
+            
+            # 快速预设按钮
+            st.markdown("**🔧 快速预设：**")
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                if st.button("右下角"):
+                    st.session_state.box = (img_width*0.7, img_height*0.8, img_width, img_height)
+            with col_b:
+                if st.button("底部字幕"):
+                    st.session_state.box = (0, img_height*0.9, img_width, img_height)
+            with col_c:
+                if st.button("左上角"):
+                    st.session_state.box = (0, 0, img_width*0.3, img_height*0.2)
+            
+            if 'box' in st.session_state:
+                watermark_box = st.session_state.box
     
     # 其他功能的参数设置
     elif mode == "清晰化":
@@ -147,7 +132,7 @@ with st.sidebar:
     # 使用提示
     st.markdown("### 💡 使用提示")
     st.markdown("""
-    - **智能去水印**: 框选或输入坐标后点击处理
+    - **智能去水印**: 自动检测或手动输入坐标
     - **清晰化**: 调整锐化强度增强细节
     - **压缩**: 降低质量减小文件大小
     - **裁剪**: 移除图片边缘区域
@@ -163,7 +148,7 @@ if uploaded_file is not None:
     # 获取图片尺寸信息
     st.markdown(f"""
     <div class="info-box">
-        📊 图片信息：{original_image.width} × {original_image.height} 像素 | 
+        📊 图片信息：**{original_image.width} × {original_image.height}** 像素 | 
         格式：{original_image.format} | 
         模式：{original_image.mode}
     </div>
@@ -186,44 +171,14 @@ if uploaded_file is not None:
                 
                 try:
                     if mode == "智能去水印":
-                        if CANVAS_AVAILABLE and 'canvas_result' in locals() and canvas_result and canvas_result.objects:
-                            # 使用 canvas 选区
-                            if canvas_result.height and canvas_result.width:
-                                scale_y = original_image.height / canvas_result.height
-                                scale_x = original_image.width / canvas_result.width
-                                
-                                boxes = []
-                                for obj in canvas_result.objects:
-                                    if obj["type"] == "rect":
-                                        left = obj["left"] * scale_x
-                                        top = obj["top"] * scale_y
-                                        width = obj["width"] * scale_x
-                                        height = obj["height"] * scale_y
-                                        box = (left, top, left + width, top + height)
-                                        boxes.append(box)
-                                
-                                if boxes:
-                                    all_left = min(b[0] for b in boxes)
-                                    all_top = min(b[1] for b in boxes)
-                                    all_right = max(b[2] for b in boxes)
-                                    all_bottom = max(b[3] for b in boxes)
-                                    merged_box = (all_left, all_top, all_right, all_bottom)
-                                    
-                                    result_image = editor.remove_watermark(original_image, merged_box)
-                                    st.success(f"✅ 水印已去除 (处理区域：{len(boxes)} 个选区)")
-                                else:
-                                    result_image = editor.remove_watermark(original_image)
-                                    st.warning("⚠️ 未检测到选区，使用自动检测模式")
-                            else:
-                                result_image = editor.remove_watermark(original_image)
-                        elif watermark_box:
+                        if not use_auto_detect and watermark_box:
                             # 使用手动输入的坐标
                             result_image = editor.remove_watermark(original_image, watermark_box)
-                            st.success("✅ 水印已去除 (使用手动坐标)")
+                            st.success(f"✅ 水印已去除 (手动坐标：{watermark_box})")
                         else:
                             # 自动检测
                             result_image = editor.remove_watermark(original_image)
-                            st.warning("⚠️ 使用自动检测模式")
+                            st.info("🔍 使用自动检测模式")
                         
                     elif mode == "清晰化":
                         result_image = editor.sharpen(original_image, sharpness)
@@ -270,7 +225,6 @@ if uploaded_file is not None:
                         
                 except Exception as e:
                     st.error(f"❌ 处理出错：{str(e)}")
-                    st.exception(e)
         else:
             st.info("👈 请在左侧选择功能并点击「开始处理」")
 
