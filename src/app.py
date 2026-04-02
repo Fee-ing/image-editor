@@ -6,6 +6,13 @@ import io
 import sys
 import os
 
+try:
+    from streamlit_drawable_canvas import st_canvas
+    CANVAS_AVAILABLE = True
+except ImportError:
+    CANVAS_AVAILABLE = False
+    st_canvas = None
+
 # 兼容本地和 Streamlit Cloud 部署
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
